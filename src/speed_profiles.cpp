@@ -117,7 +117,7 @@ SpeedProfile::forward_pass( MapPointIter& it, MapPointIter& end_it, MapPointIter
         state            = traj.get_state_at_time( time );
       }
 
-      double obj_s = route.get_s( state );
+      double obj_s = route.get_s( state ).value();
 
       double offset = adore::math::distance_2d( state, route.get_pose_at_s( obj_s ) );
 

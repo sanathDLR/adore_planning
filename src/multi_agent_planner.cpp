@@ -193,7 +193,7 @@ MultiAgentPlanner::create_single_ocp( size_t id )
 
   auto& state = participant.state;
 
-  double s = participant.route ? participant.route->get_s( state ) : 0;
+  double s = participant.route ? participant.route->get_s( state ).value() : 0;
 
   problem.initial_state << state.x, state.y, state.yaw_angle, state.vx, s;
 
@@ -313,7 +313,7 @@ MultiAgentPlanner::solve_problem()
     {         "max_ms",   20 },
     {          "debug",  0.0 }
   };
-  size_t        max_outer_iterations = 4;
+  int           max_outer_iterations = 4;
   mas::Solver   solver{ std::in_place_type<mas::iLQR> };
   mas::Strategy strat = mas::TrustRegionNashStrategy{ max_outer_iterations, std::move( solver ), inner_params };
   solution            = mas::solve( strat, multi_agent_problem );

@@ -102,22 +102,16 @@ generate_trajectory_from_speed_profile( const SpeedProfile& speed_profile, const
                                         const dynamics::VehicleStateDynamic& start_state, double time_step = 0.1 )
 {
   adore::dynamics::Trajectory initial_trajectory;
-  double                      accumulated_time = 0.0;
 
-  // basic sanity on time_step
+  double accumulated_time = 0.0;
+
   if( !std::isfinite( time_step ) || time_step <= 0.0 )
-  {
     time_step = 0.1;
-  }
 
-  // need at least two points to form a segment
   if( speed_profile.s_to_speed.size() < 2 )
-  {
     return initial_trajectory;
-  }
 
-  constexpr double min_avg_speed  = 0.1;    // m/s, avoid division by ~0
-  constexpr double max_total_time = 3600.0; // clamp to 1h to avoid insane trajectories
+  constexpr double min_avg_speed = 0.1;
 
   auto it      = speed_profile.s_to_speed.begin();
   auto next_it = std::next( it );
@@ -131,7 +125,6 @@ generate_trajectory_from_speed_profile( const SpeedProfile& speed_profile, const
 
     const double delta_s = s2 - s1;
 
-    // skip non-forward or zero-length segments
     if( delta_s <= 0.0 )
     {
       ++it;
@@ -141,11 +134,8 @@ generate_trajectory_from_speed_profile( const SpeedProfile& speed_profile, const
 
     double avg_v = 0.5 * ( v1 + v2 );
 
-    // avoid zero / negative or tiny average speed → clamp
     if( !std::isfinite( avg_v ) || avg_v < min_avg_speed )
-    {
       avg_v = min_avg_speed;
-    }
 
     const double delta_t = delta_s / avg_v;
 
@@ -167,27 +157,14 @@ generate_trajectory_from_speed_profile( const SpeedProfile& speed_profile, const
 
     accumulated_time += delta_t;
 
-    if( accumulated_time > max_total_time )
-    {
-      accumulated_time = max_total_time;
-    }
-
     const double dt = accumulated_time - state.time;
+
     if( dt > 0.0 && std::isfinite( dt ) )
-    {
       state.ax = ( v2 - v1 ) / dt;
-    }
     else
-    {
       state.ax = 0.0;
-    }
 
     initial_trajectory.states.push_back( state );
-
-    if( accumulated_time >= max_total_time )
-    {
-      break;
-    }
 
     ++it;
     ++next_it;
@@ -195,45 +172,28 @@ generate_trajectory_from_speed_profile( const SpeedProfile& speed_profile, const
 
   adore::dynamics::Trajectory trajectory;
 
-  // nothing usable built → just return empty trajectory
   if( initial_trajectory.states.empty() )
-  {
     return trajectory;
-  }
 
-  const double t_final = initial_trajectory.states.back().time;
+  const double t_final_profile = initial_trajectory.states.back().time;
 
-  if( !std::isfinite( t_final ) || t_final <= 0.0 )
-  {
-    return trajectory;
-  }
+  constexpr double horizon = 4.0;
 
-  const double   clamped_t_final = std::min( t_final, max_total_time );
-  std::size_t    max_steps       = static_cast<std::size_t>( clamped_t_final / time_step ) + 1;
-  constexpr auto hard_step_cap   = static_cast<std::size_t>( 100000 ); // safety cap
-
-  if( max_steps > hard_step_cap )
-  {
-    max_steps = hard_step_cap;
-  }
+  const std::size_t steps = static_cast<std::size_t>( horizon / time_step );
 
   dynamics::VehicleStateDynamic current_state = start_state;
 
-  for( std::size_t step = 0; step <= max_steps; ++step )
+  for( std::size_t i = 0; i < steps; ++i )
   {
-    double t = static_cast<double>( step ) * time_step;
-    if( t > clamped_t_final )
-    {
-      t = clamped_t_final;
-    }
+    double t = i * time_step;
 
-    current_state = initial_trajectory.get_state_at_time( t );
+    double query_t = std::min( t, t_final_profile );
+
+    current_state = initial_trajectory.get_state_at_time( query_t );
+
+    current_state.time = t;
+
     trajectory.states.push_back( current_state );
-
-    if( t >= clamped_t_final )
-    {
-      break;
-    }
   }
 
   return trajectory;

@@ -16,7 +16,7 @@
 #include "adore_math/fast_trig.h"
 
 #include "controllers/iLQR.hpp"
-#include "planning/speed_profile_qp.hpp"
+#include "planning/speed_profiles.hpp"
 
 namespace adore
 {
@@ -125,7 +125,7 @@ dynamics::Trajectory
 TrajectoryPlanner::plan_route_trajectory( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state,
                                           const dynamics::TrafficParticipantSet& traffic_participants )
 {
-  double initial_s = latest_route.get_s( current_state );
+  double initial_s = latest_route.get_s( current_state ).value();
 
   SpeedProfile speed_profile;
   speed_profile.set_vehicle_parameters( vehicle_params );
