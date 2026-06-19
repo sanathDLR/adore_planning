@@ -140,15 +140,42 @@ TrajectoryPlanner::plan_route_trajectory_with_custom_comfort_settings( const map
 {
   double     initial_s          = latest_route.get_s( current_state );
   map::Route route_with_signals = compute_traffic_light_behavior( current_state, latest_route, traffic_signals );
+  return plan_route_trajectory_impl( route_with_signals, current_state, traffic_participants, initial_s, custom_comfort_settings );
+}
 
+
+dynamics::Trajectory
+TrajectoryPlanner::plan_route_trajectory_from_s( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state,
+                                                 const dynamics::TrafficParticipantSet& traffic_participants,
+                                                 double initial_s )
+{
+  return plan_route_trajectory_impl( latest_route, current_state, traffic_participants, initial_s, comfort_settings );
+}
+
+
+dynamics::Trajectory
+TrajectoryPlanner::plan_route_trajectory_with_custom_comfort_settings_from_s( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state,
+                                                 const dynamics::TrafficParticipantSet& traffic_participants,
+                                                 const dynamics::ComfortSettings custom_comfort_settings,
+                                                 double initial_s )
+{
+  return plan_route_trajectory_impl( latest_route, current_state, traffic_participants, initial_s, custom_comfort_settings );
+}
+
+
+dynamics::Trajectory
+TrajectoryPlanner::plan_route_trajectory_impl( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state,
+                                               const dynamics::TrafficParticipantSet& traffic_participants,
+                                               double initial_s, const dynamics::ComfortSettings& custom_comfort_settings )
+{
   SpeedProfile speed_profile;
   speed_profile.set_vehicle_parameters( vehicle_params );
   speed_profile.set_comfort_settings( custom_comfort_settings );
 
-  speed_profile.generate_from_route_and_participants( route_with_signals, traffic_participants, current_state.vx, initial_s,
+  speed_profile.generate_from_route_and_participants( latest_route, traffic_participants, current_state.vx, initial_s,
                                                       current_state.time, ref_traj_length );
 
-  auto ref_traj = generate_trajectory_from_speed_profile( speed_profile, route_with_signals, current_state, dt );
+  auto ref_traj = generate_trajectory_from_speed_profile( speed_profile, latest_route, current_state, dt );
 
   if( ref_traj.states.size() < 1 )
   {
