@@ -350,7 +350,7 @@ TrajectoryPlanner::compute_traffic_light_behavior( const dynamics::VehicleStateD
     ego.x = current_state.x;
     ego.y = current_state.y;
 
-    double d_light = adore::math::distance_2d( ego, first_light_point ) - vehicle_params.body_length / 2;
+    double d_light = adore::math::distance_2d( ego, first_light_point );
 
     // ================= PARAMETERS =================
     const double a_comfort  = 1.5; // comfortable braking
@@ -403,7 +403,7 @@ TrajectoryPlanner::compute_traffic_light_behavior( const dynamics::VehicleStateD
       previous_distance = distance_to_next_traffic_light;
       for( auto& p : route_with_signal.reference_line )
       {
-        double d = adore::math::distance_2d( p.second, first_light_point );
+        double d = adore::math::distance_2d( p.second, first_light_point ) - vehicle_params.body_length / 2;
 
         if( d < 2.0 )
         {
