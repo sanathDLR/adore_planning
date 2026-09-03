@@ -45,6 +45,21 @@ struct PlannerResult
   map::Route                          modified_route;
 };
 
+struct PathState
+{
+  double s;
+  double x;
+  double y;
+  double yaw;
+  double steer;
+};
+
+struct ContinuityCost
+{
+  double distance;
+  double heading_diff;
+};
+
 class HybridAStarPlanner
 {
 public:
@@ -54,12 +69,12 @@ public:
   void set_parameters( const std::map<std::string, double>& params );
   void set_comfort_settings( const std::shared_ptr<dynamics::ComfortSettings>& settings );
   void set_vehicle_parameters( const dynamics::PhysicalVehicleParameters& params );
-  void set_goal( const map::Route& route, const math::Polygon2d& drivable_area, const dynamics::VehicleStateDynamic& ego );
+  void set_goal( double x, double y );
 
   map::Route    plan( const adore::dynamics::VehicleStateDynamic& ego, const adore::dynamics::TrafficParticipantSet& participants,
-                      const math::Polygon2d& drivable_area );
+                      const std::optional<math::Polygon2d>& drivable_area );
   PlannerResult plan_trajectory( const dynamics::VehicleStateDynamic& current_state, const dynamics::TrafficParticipantSet& participants,
-                                 const math::Polygon2d& drivable_area, const map::Route& route );
+                                 const std::optional<math::Polygon2d>& drivable_area );
 
   dynamics::Trajectory optimize_trajectory( const dynamics::VehicleStateDynamic& current_state, const map::Route& ref_route );
 
@@ -72,6 +87,7 @@ private:
 
   double goal_x        = 0;
   double goal_y        = 0;
+  double goal_yaw      = 0;
   double dt            = 0.1;
   size_t horizon_steps = 40;
   double ref_velocity  = 0.0;
@@ -82,6 +98,11 @@ private:
   map::Route                reference_route;
   map::Route                previous_route;
   bool                      has_previous_route = false;
+  math::Point2d             current_local_goal;
+  bool                      has_local_goal    = false;
+  bool                      final_goal_locked = true;
+
+  std::vector<PathState> previous_path_states;
 
   struct SolverParams
   {
@@ -170,12 +191,10 @@ private:
   //------------------------------------------
 
   bool simulate_motion( double& x, double& y, double& yaw, double steer, const dynamics::TrafficParticipantSet& participants,
-                        const math::Polygon2d& drivable_area );
-  bool inside_drivable_area( double x, double y, double yaw, const math::Polygon2d& drivable_area );
+                        const std::optional<math::Polygon2d>& drivable_area );
+  bool inside_drivable_area( double x, double y, double yaw, const std::optional<math::Polygon2d>& drivable_area );
 
   bool collision( double x, double y, const adore::dynamics::TrafficParticipantSet& participants );
-
-  bool inside_search_region( double x, double y, double yaw, const math::Polygon2d& drivable_area );
 
   double heuristic( double x, double y, double yaw, const math::Point2d& local_goal );
   double distance_to_previous_route( double x, double y );
@@ -183,10 +202,10 @@ private:
   double find_closest_s_on_route( const map::Route& route, const dynamics::VehicleStateDynamic& ego );
   double distance_to_polygon_boundary( const math::Point2d& p, const math::Polygon2d& polygon );
 
-  math::Point2d compute_local_goal( const dynamics::VehicleStateDynamic& ego, const math::Polygon2d& drivable_area );
+  math::Point2d compute_local_goal( const dynamics::VehicleStateDynamic& ego, const std::optional<math::Polygon2d>& drivable_area );
 
   bool try_goal_connection( Node* node, const math::Point2d& local_goal, const dynamics::TrafficParticipantSet& participants,
-                            const math::Polygon2d& drivable_area, std::vector<std::pair<double, double>>& path );
+                            const std::optional<math::Polygon2d>& drivable_area, std::vector<std::pair<double, double>>& path );
 
   map::Route trim_route_from_ego( const map::Route& route, const dynamics::VehicleStateDynamic& ego );
 
