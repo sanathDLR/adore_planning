@@ -41,11 +41,13 @@ HybridAStarPlanner::set_vehicle_parameters( const dynamics::PhysicalVehicleParam
 }
 
 void
-HybridAStarPlanner::set_goal( double x, double y )
+HybridAStarPlanner::set_goal( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state )
 {
-  goal_x = x;
-  goal_y = y;
-  goal_yaw = 1.4;
+  double current_s = latest_route.get_s( current_state );
+  auto point_ahead = latest_route.get_pose_at_s( current_s + 20 );
+  goal_x = point_ahead.x;
+  goal_y = point_ahead.y;
+  goal_yaw = point_ahead.yaw;
 }
 
 std::tuple<int, int, int>
@@ -74,7 +76,7 @@ HybridAStarPlanner::GridHash::operator()( const std::tuple<int, int, int>& k ) c
 // CONFIG
 // ======================================================
 
-static constexpr double LOCAL_GOAL_MAX_DIST = 25.0;
+static constexpr double LOCAL_GOAL_MAX_DIST = 30.0;
 static constexpr double GOAL_REACHED_RADIUS = 2.0;
 
 static constexpr double VEHICLE_LENGTH = 4.5;
@@ -568,18 +570,18 @@ HybridAStarPlanner::heuristic( double x, double y, double yaw, const math::Point
   // the coarse search already favors approaches that end up
   // roughly facing the right way, instead of relying entirely on
   // the short final connector to fix heading at the last moment.
-  // if( final_goal_locked )
-  // {
-  //   const double blend = std::max( 0.0, std::min( 1.0, 1.0 - dist / GOAL_HEADING_BLEND_DISTANCE ) );
+  if( final_goal_locked )
+  {
+    const double blend = std::max( 0.0, std::min( 1.0, 1.0 - dist / GOAL_HEADING_BLEND_DISTANCE ) );
 
-  //   const double heading_gap = math::normalize_angle( goal_yaw - target_heading );
+    const double heading_gap = math::normalize_angle( goal_yaw - target_heading );
 
-  //   target_heading = math::normalize_angle( target_heading + blend * heading_gap );
-  // }
+    target_heading = math::normalize_angle( target_heading + blend * heading_gap );
+  }
 
   const double heading_error = std::fabs( math::normalize_angle( target_heading - yaw ) );
 
-  return dist + 2.0 * heading_error;
+  return 1.5 * dist + 2.5 * heading_error;
 }
 
 bool
@@ -613,16 +615,16 @@ HybridAStarPlanner::try_goal_connection( Node* node, const math::Point2d& local_
     // matter." No signature change needed to pass that through.
     // ----------------------------------------------------------
 
-    // if( final_goal_locked )
-    // {
-    //   const double blend = std::max( 0.0, std::min( 1.0, 1.0 - dist / GOAL_HEADING_BLEND_DISTANCE ) );
+    if( final_goal_locked )
+    {
+      const double blend = std::max( 0.0, std::min( 1.0, 1.0 - dist / GOAL_HEADING_BLEND_DISTANCE ) );
 
-    //   const double heading_gap = math::normalize_angle( goal_yaw - target_position_bearing );
+      const double heading_gap = math::normalize_angle( goal_yaw - target_position_bearing );
 
-    //   target = math::normalize_angle( target_position_bearing + blend * heading_gap );
+      target = math::normalize_angle( target_position_bearing + blend * heading_gap );
 
-    //   heading_ok = std::fabs( math::normalize_angle( yaw - goal_yaw ) ) < GOAL_HEADING_TOLERANCE;
-    // }
+      heading_ok = std::fabs( math::normalize_angle( yaw - goal_yaw ) ) < GOAL_HEADING_TOLERANCE;
+    }
 
     // ----------------------------------------------------------
     // Goal reached - position AND (when applicable) heading
@@ -784,7 +786,7 @@ HybridAStarPlanner::trim_route_from_ego( const map::Route& route, const dynamics
 
 map::Route
 HybridAStarPlanner::plan( const dynamics::VehicleStateDynamic& ego, const dynamics::TrafficParticipantSet& participants,
-                          const std::optional<math::Polygon2d>& drivable_area )
+                          const std::optional<math::Polygon2d>& drivable_area, const map::Route& latest_route )
 {
   std::priority_queue<QueueNode> open_set;
 
@@ -1321,11 +1323,13 @@ HybridAStarPlanner::make_trajectory_cost( const map::Route& ref_route )
 PlannerResult
 HybridAStarPlanner::plan_trajectory( const dynamics::VehicleStateDynamic&   current_state,
                                      const dynamics::TrafficParticipantSet& participants,
-                                     const std::optional<math::Polygon2d>&  drivable_area )
+                                     const std::optional<math::Polygon2d>&  drivable_area,
+                                     const map::Route& latest_route )
 {
   PlannerResult planner_output;
   all_participants     = participants;
-  map::Route ref_route = plan( current_state, participants, drivable_area );
+  set_goal( latest_route, current_state );
+  map::Route ref_route = plan( current_state, participants, drivable_area, latest_route );
   std::cerr << "route size: " << ref_route.reference_line.size() << std::endl;
   if( ref_route.reference_line.size() < 2 )
   {

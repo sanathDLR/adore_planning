@@ -69,12 +69,12 @@ public:
   void set_parameters( const std::map<std::string, double>& params );
   void set_comfort_settings( const std::shared_ptr<dynamics::ComfortSettings>& settings );
   void set_vehicle_parameters( const dynamics::PhysicalVehicleParameters& params );
-  void set_goal( double x, double y );
+  void set_goal( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state );
 
   map::Route    plan( const adore::dynamics::VehicleStateDynamic& ego, const adore::dynamics::TrafficParticipantSet& participants,
-                      const std::optional<math::Polygon2d>& drivable_area );
+                      const std::optional<math::Polygon2d>& drivable_area, const map::Route& latest_route );
   PlannerResult plan_trajectory( const dynamics::VehicleStateDynamic& current_state, const dynamics::TrafficParticipantSet& participants,
-                                 const std::optional<math::Polygon2d>& drivable_area );
+                                 const std::optional<math::Polygon2d>& drivable_area, const map::Route& latest_route );
 
   dynamics::Trajectory optimize_trajectory( const dynamics::VehicleStateDynamic& current_state, const map::Route& ref_route );
 
