@@ -41,13 +41,72 @@ HybridAStarPlanner::set_vehicle_parameters( const dynamics::PhysicalVehicleParam
 }
 
 void
-HybridAStarPlanner::set_goal( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state )
+HybridAStarPlanner::set_goal( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state,
+                              const dynamics::TrafficParticipantSet& traffic_participants )
 {
-  double current_s = latest_route.get_s( current_state );
-  auto point_ahead = latest_route.get_pose_at_s( current_s + 20 );
-  goal_x = point_ahead.x;
-  goal_y = point_ahead.y;
-  goal_yaw = point_ahead.yaw;
+  double current_s     = latest_route.get_s( current_state );
+  bool   route_blocked = false;
+  double free_point_s  = current_s;
+
+  constexpr double check_distance   = 20.0;
+  constexpr double blocking_offset  = 1.5;
+  constexpr double stopped_velocity = 0.2;
+  constexpr double object_clearance = 4.0;
+
+  double furthest_blocking_s = 0.0;
+
+  // ----------------------------------------------------------
+  // Find the furthest object blocking the route
+  // ----------------------------------------------------------
+  for( const auto& [id, participant] : traffic_participants.participants )
+  {
+    const auto& state = participant.state;
+
+    // Ignore moving participants
+    if( state.vx > stopped_velocity )
+      continue;
+
+    // Longitudinal position of the participant on the route
+    const double obj_s = latest_route.get_s( state );
+
+    // Ignore objects behind the vehicle
+    if( obj_s <= current_s )
+      continue;
+
+    // Check that the object is actually on the route
+    const double offset = adore::math::distance_2d( state, latest_route.get_pose_at_s( obj_s ) );
+
+    if( offset > blocking_offset )
+      continue;
+
+    // Object is blocking the route.
+    // Keep the furthest one.
+    furthest_blocking_s = std::max( furthest_blocking_s, obj_s - current_s + object_clearance + participant.physical_parameters.body_length );
+  }
+
+
+  // ----------------------------------------------------------
+  // Find the first route point after the furthest blockage
+  // ----------------------------------------------------------
+  for( int i = 0; i < 20; i+0.5 )
+  {
+    const double point_s = current_s + i;
+
+    if( point_s > furthest_blocking_s )
+    {
+      free_point_s = point_s;
+      break;
+    }
+
+    // If we reach the end and everything is blocked,
+    // use the last point as fallback.
+    free_point_s = point_s;
+  }
+  auto free_point_ahead = latest_route.get_pose_at_s( free_point_s );
+  free_point_ahead = latest_route.get_pose_at_s( current_s + 20 );
+  goal_x   = free_point_ahead.x;
+  goal_y   = free_point_ahead.y;
+  goal_yaw = free_point_ahead.yaw;
 }
 
 std::tuple<int, int, int>
@@ -264,7 +323,6 @@ HybridAStarPlanner::compute_local_goal( const dynamics::VehicleStateDynamic& ego
       math::Point2d final_goal;
       final_goal.x = goal_x;
       final_goal.y = goal_y;
-      std::cerr << "switching to final goal now" << std::endl;
       return final_goal;
     }
 
@@ -800,7 +858,7 @@ HybridAStarPlanner::plan( const dynamics::VehicleStateDynamic& ego, const dynami
 
   const bool has_drivable_area = drivable_area.has_value();
 
-  std::cerr << "Hybrid A* planning mode: " << ( has_drivable_area ? "DRIVABLE AREA" : "FREE SPACE" ) << std::endl;
+  // std::cerr << "Hybrid A* planning mode: " << ( has_drivable_area ? "DRIVABLE AREA" : "FREE SPACE" ) << std::endl;
 
   // ============================================================
   // START VALIDATION
@@ -819,10 +877,10 @@ HybridAStarPlanner::plan( const dynamics::VehicleStateDynamic& ego, const dynami
 
   math::Point2d local_goal = compute_local_goal( ego, drivable_area );
 
-  std::cerr << "Goal: " << goal_x << ", " << goal_y << std::setprecision( 16 ) << std::endl;
-  std::cerr << "Current: " << ego.x << ", " << ego.y << std::setprecision( 16 ) << std::endl;
+  // std::cerr << "Goal: " << goal_x << ", " << goal_y << std::setprecision( 16 ) << std::endl;
+  // std::cerr << "Current: " << ego.x << ", " << ego.y << std::setprecision( 16 ) << std::endl;
 
-  std::cerr << "Local goal: " << local_goal.x << ", " << local_goal.y << std::setprecision( 16 ) << std::endl;
+  // std::cerr << "Local goal: " << local_goal.x << ", " << local_goal.y << std::setprecision( 16 ) << std::endl;
 
   Node* start = nullptr;
 
@@ -961,7 +1019,7 @@ HybridAStarPlanner::plan( const dynamics::VehicleStateDynamic& ego, const dynami
 
   double best_goal_dist = std::hypot( local_goal.x - start->x, local_goal.y - start->y );
 
-  std::cerr << "Local goal distance: " << best_goal_dist << std::endl;
+  // std::cerr << "Local goal distance: " << best_goal_dist << std::endl;
 
   // ============================================================
   // SEARCH
@@ -1196,7 +1254,7 @@ compute_idm_velocity( const adore::map::Route& route, const adore::dynamics::Veh
                       const adore::dynamics::TrafficParticipantSet& participants, double goal_distance, double dt = 0.1 )
 {
   // IDM parameters
-  const double v0    = 3.0;
+  const double v0    = 2.8;
   const double a     = 1.5;
   const double b     = 1.5;
   const double T     = 1.2;
@@ -1323,14 +1381,13 @@ HybridAStarPlanner::make_trajectory_cost( const map::Route& ref_route )
 PlannerResult
 HybridAStarPlanner::plan_trajectory( const dynamics::VehicleStateDynamic&   current_state,
                                      const dynamics::TrafficParticipantSet& participants,
-                                     const std::optional<math::Polygon2d>&  drivable_area,
-                                     const map::Route& latest_route )
+                                     const std::optional<math::Polygon2d>& drivable_area, const map::Route& latest_route )
 {
   PlannerResult planner_output;
-  all_participants     = participants;
-  set_goal( latest_route, current_state );
+  all_participants = participants;
+  set_goal( latest_route, current_state, participants );
   map::Route ref_route = plan( current_state, participants, drivable_area, latest_route );
-  std::cerr << "route size: " << ref_route.reference_line.size() << std::endl;
+  // std::cerr << "route size: " << ref_route.reference_line.size() << std::endl;
   if( ref_route.reference_line.size() < 2 )
   {
     std::cerr << "no route found to goal" << std::endl;
