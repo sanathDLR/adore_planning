@@ -51,7 +51,7 @@ HybridAStarPlanner::set_goal( const map::Route& latest_route, const dynamics::Ve
   constexpr double check_distance   = 20.0;
   constexpr double blocking_offset  = 1.5;
   constexpr double stopped_velocity = 0.2;
-  constexpr double object_clearance = 4.0;
+  constexpr double object_clearance = 3.0;
 
   double furthest_blocking_s = 0.0;
 
@@ -83,27 +83,13 @@ HybridAStarPlanner::set_goal( const map::Route& latest_route, const dynamics::Ve
     // Keep the furthest one.
     furthest_blocking_s = std::max( furthest_blocking_s, obj_s - current_s + object_clearance + participant.physical_parameters.body_length );
   }
-
-
-  // ----------------------------------------------------------
-  // Find the first route point after the furthest blockage
-  // ----------------------------------------------------------
-  for( int i = 0; i < 20; i+0.5 )
+  if( furthest_blocking_s == 0 )
   {
-    const double point_s = current_s + i;
-
-    if( point_s > furthest_blocking_s )
-    {
-      free_point_s = point_s;
-      break;
-    }
-
-    // If we reach the end and everything is blocked,
-    // use the last point as fallback.
-    free_point_s = point_s;
+    furthest_blocking_s = 7.0;
+    unstructured_speed = 2.0;
   }
-  auto free_point_ahead = latest_route.get_pose_at_s( free_point_s );
-  free_point_ahead = latest_route.get_pose_at_s( current_s + 20 );
+
+  auto free_point_ahead = latest_route.get_pose_at_s( current_s + furthest_blocking_s );
   goal_x   = free_point_ahead.x;
   goal_y   = free_point_ahead.y;
   goal_yaw = free_point_ahead.yaw;
@@ -390,10 +376,6 @@ HybridAStarPlanner::compute_local_goal( const dynamics::VehicleStateDynamic& ego
     current_local_goal = local_goal;
     has_local_goal     = true;
 
-    std::cout << "Local goal [FREE SPACE]: " << local_goal.x << ", " << local_goal.y << std::endl;
-
-    std::cout << "Distance: " << std::hypot( local_goal.x - ego.x, local_goal.y - ego.y ) << std::endl;
-
     return local_goal;
   }
 
@@ -538,7 +520,7 @@ HybridAStarPlanner::compute_local_goal( const dynamics::VehicleStateDynamic& ego
 
   if( best_score < -std::numeric_limits<double>::max() / 2.0 )
   {
-    std::cerr << "No valid local goal found" << std::endl;
+    planner_message += " No valid local goal found";
 
     best_point.x = ego.x + 5.0 * std::cos( ego.yaw_angle );
 
@@ -569,10 +551,6 @@ HybridAStarPlanner::compute_local_goal( const dynamics::VehicleStateDynamic& ego
   // ============================================================
   // DEBUG
   // ============================================================
-
-  std::cout << "Local goal: " << best_point.x << ", " << best_point.y << std::endl;
-
-  std::cout << "Distance: " << std::hypot( best_point.x - ego.x, best_point.y - ego.y ) << std::endl;
 
   return best_point;
 }
@@ -617,7 +595,7 @@ HybridAStarPlanner::heuristic( double x, double y, double yaw, const math::Point
 {
   const double dx = local_goal.x - x;
   const double dy = local_goal.y - y;
-
+  
   const double dist = std::hypot( dx, dy );
 
   double target_heading = std::atan2( dy, dx );
@@ -639,7 +617,7 @@ HybridAStarPlanner::heuristic( double x, double y, double yaw, const math::Point
 
   const double heading_error = std::fabs( math::normalize_angle( target_heading - yaw ) );
 
-  return 1.5 * dist + 2.5 * heading_error;
+  return distance_weight * dist + heading_weight * heading_error;
 }
 
 bool
@@ -876,11 +854,16 @@ HybridAStarPlanner::plan( const dynamics::VehicleStateDynamic& ego, const dynami
   // ============================================================
 
   math::Point2d local_goal = compute_local_goal( ego, drivable_area );
-
-  // std::cerr << "Goal: " << goal_x << ", " << goal_y << std::setprecision( 16 ) << std::endl;
-  // std::cerr << "Current: " << ego.x << ", " << ego.y << std::setprecision( 16 ) << std::endl;
-
-  // std::cerr << "Local goal: " << local_goal.x << ", " << local_goal.y << std::setprecision( 16 ) << std::endl;
+  const double dx = local_goal.x - ego.x;
+  const double dy = local_goal.y - ego.y;
+  
+  const double dist = std::hypot( dx, dy );
+  if( dist < 8.0 )
+  {
+    distance_weight = 2.5;
+    heading_weight = 3.0;
+  }
+  // planner_message += " distance: " + std::to_string(dist);
 
   Node* start = nullptr;
 
@@ -1019,8 +1002,6 @@ HybridAStarPlanner::plan( const dynamics::VehicleStateDynamic& ego, const dynami
 
   double best_goal_dist = std::hypot( local_goal.x - start->x, local_goal.y - start->y );
 
-  // std::cerr << "Local goal distance: " << best_goal_dist << std::endl;
-
   // ============================================================
   // SEARCH
   // ============================================================
@@ -1031,8 +1012,7 @@ HybridAStarPlanner::plan( const dynamics::VehicleStateDynamic& ego, const dynami
   {
     if( ++expansions > MAX_EXPANSIONS )
     {
-      std::cerr << "Hybrid A* expansion limit reached (" << MAX_EXPANSIONS << "), using best node found so far" << std::endl;
-
+      planner_message += " Hybrid A* expansion limit reached (" + std::to_string( MAX_EXPANSIONS ) + "), using best node found so far ";
       break;
     }
 
@@ -1250,11 +1230,11 @@ HybridAStarPlanner::plan( const dynamics::VehicleStateDynamic& ego, const dynami
 }
 
 double
-compute_idm_velocity( const adore::map::Route& route, const adore::dynamics::VehicleStateDynamic& ego,
-                      const adore::dynamics::TrafficParticipantSet& participants, double goal_distance, double dt = 0.1 )
+HybridAStarPlanner::compute_idm_velocity( const adore::map::Route& route, const adore::dynamics::VehicleStateDynamic& ego,
+                      const adore::dynamics::TrafficParticipantSet& participants, double goal_distance )
 {
   // IDM parameters
-  const double v0    = 2.8;
+  const double v0    = unstructured_speed;
   const double a     = 1.5;
   const double b     = 1.5;
   const double T     = 1.2;
@@ -1384,19 +1364,21 @@ HybridAStarPlanner::plan_trajectory( const dynamics::VehicleStateDynamic&   curr
                                      const std::optional<math::Polygon2d>& drivable_area, const map::Route& latest_route )
 {
   PlannerResult planner_output;
+  planner_message.clear();
   all_participants = participants;
   set_goal( latest_route, current_state, participants );
   map::Route ref_route = plan( current_state, participants, drivable_area, latest_route );
-  // std::cerr << "route size: " << ref_route.reference_line.size() << std::endl;
   if( ref_route.reference_line.size() < 2 )
   {
-    std::cerr << "no route found to goal" << std::endl;
+    planner_message += " no route found to goal";
+    planner_output.planner_message = planner_message;
     return planner_output;
   }
   double goal_distance          = ref_route.reference_line.rbegin()->first - 1.0;
   ref_velocity                  = compute_idm_velocity( ref_route, current_state, all_participants, goal_distance );
   planner_output.modified_route = ref_route;
   planner_output.trajectory     = optimize_trajectory( current_state, ref_route );
+  planner_output.planner_message = planner_message;
   return planner_output;
 }
 

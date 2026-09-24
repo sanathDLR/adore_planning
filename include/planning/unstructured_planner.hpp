@@ -43,6 +43,7 @@ struct PlannerResult
 {
   std::optional<dynamics::Trajectory> trajectory;
   map::Route                          modified_route;
+  std::string                         planner_message;
 };
 
 struct PathState
@@ -69,7 +70,7 @@ public:
   void set_parameters( const std::map<std::string, double>& params );
   void set_comfort_settings( const std::shared_ptr<dynamics::ComfortSettings>& settings );
   void set_vehicle_parameters( const dynamics::PhysicalVehicleParameters& params );
-  void set_goal( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state, 
+  void set_goal( const map::Route& latest_route, const dynamics::VehicleStateDynamic& current_state,
                  const dynamics::TrafficParticipantSet& traffic_participants );
 
   map::Route    plan( const adore::dynamics::VehicleStateDynamic& ego, const adore::dynamics::TrafficParticipantSet& participants,
@@ -95,6 +96,10 @@ private:
   double local_goal_x  = 0.0;
   double local_goal_y  = 0.0;
 
+  double distance_weight = 1.0;
+  double heading_weight  = 3.5;
+  double unstructured_speed = 2.8;
+
   std::shared_ptr<mas::OCP> problem;
   map::Route                reference_route;
   map::Route                previous_route;
@@ -102,6 +107,7 @@ private:
   math::Point2d             current_local_goal;
   bool                      has_local_goal    = false;
   bool                      final_goal_locked = true;
+  std::string               planner_message;
 
   std::vector<PathState> previous_path_states;
 
@@ -132,7 +138,7 @@ private:
   static constexpr double XY_RES  = 1.0;
   static constexpr double YAW_RES = 5.0 * M_PI / 180.0;
 
-  static constexpr double VEHICLE_RADIUS     = 4.0;
+  static constexpr double VEHICLE_RADIUS     = 3.0;
   static constexpr double OBSTACLE_INFLATION = 1.6;
 
   //------------------------------------------
@@ -202,6 +208,9 @@ private:
   double route_difference( const map::Route& r1, const map::Route& r2 );
   double find_closest_s_on_route( const map::Route& route, const dynamics::VehicleStateDynamic& ego );
   double distance_to_polygon_boundary( const math::Point2d& p, const math::Polygon2d& polygon );
+
+  double compute_idm_velocity( const adore::map::Route& route, const adore::dynamics::VehicleStateDynamic& ego,
+                               const adore::dynamics::TrafficParticipantSet& participants, double goal_distance );
 
   math::Point2d compute_local_goal( const dynamics::VehicleStateDynamic& ego, const std::optional<math::Polygon2d>& drivable_area );
 
