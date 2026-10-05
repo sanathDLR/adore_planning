@@ -51,7 +51,7 @@ HybridAStarPlanner::set_goal( const map::Route& latest_route, const dynamics::Ve
   constexpr double check_distance   = 20.0;
   constexpr double blocking_offset  = 1.5;
   constexpr double stopped_velocity = 0.2;
-  constexpr double object_clearance = 3.0;
+  constexpr double object_clearance = 5.0;
 
   double furthest_blocking_s = 0.0;
 
@@ -86,7 +86,7 @@ HybridAStarPlanner::set_goal( const map::Route& latest_route, const dynamics::Ve
   if( furthest_blocking_s == 0 )
   {
     furthest_blocking_s = 7.0;
-    unstructured_speed = 2.0;
+    // unstructured_speed = 2.5;
   }
 
   auto free_point_ahead = latest_route.get_pose_at_s( current_s + furthest_blocking_s );
@@ -209,9 +209,22 @@ HybridAStarPlanner::collision( double x, double y, const dynamics::TrafficPartic
   {
     double dx = x - p.state.x;
     double dy = y - p.state.y;
+    double yaw = p.state.yaw_angle;
 
-    if( std::hypot( dx, dy ) < VEHICLE_RADIUS )
+    double cos_yaw = math::fast_cos( yaw );
+    double sin_yaw = math::fast_sin( yaw );
+
+    double local_x = dx * cos_yaw + dy * sin_yaw;
+    double local_y = -dx * sin_yaw + dy * cos_yaw;
+
+    double half_length = 0.5 * p.physical_parameters.body_length + 1.5;
+    double half_width = 0.5 * p.physical_parameters.body_width + 1.5;
+
+    if( std::abs( local_x ) < half_length && std::abs( local_y ) < half_width )
       return true;
+
+    // if( std::hypot( dx, dy ) < VEHICLE_RADIUS )
+    //   return true;
   }
 
   return false;
@@ -1452,8 +1465,8 @@ HybridAStarPlanner::setup_problem()
 
 
   Eigen::VectorXd lower_bounds( problem->control_dim ), upper_bounds( problem->control_dim );
-  lower_bounds << -vehicle_params.steering_angle_max, vehicle_params.acceleration_min;
-  upper_bounds << vehicle_params.steering_angle_max, vehicle_params.acceleration_max;
+  lower_bounds << -0.3, vehicle_params.acceleration_min;
+  upper_bounds << 0.3, vehicle_params.acceleration_max;
   problem->input_lower_bounds = lower_bounds;
   problem->input_upper_bounds = upper_bounds;
   problem->stage_cost         = make_trajectory_cost( reference_route );

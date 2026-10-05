@@ -125,7 +125,7 @@ private:
     double long_error     = 0.1;
     double speed_error    = 5.0;
     double heading_error  = 10.0;
-    double steering_angle = 1.0;
+    double steering_angle = 1.5;
     double acceleration   = 0.1;
   } weights;
 
@@ -138,7 +138,7 @@ private:
   static constexpr double XY_RES  = 1.0;
   static constexpr double YAW_RES = 5.0 * M_PI / 180.0;
 
-  static constexpr double VEHICLE_RADIUS     = 3.0;
+  static constexpr double VEHICLE_RADIUS     = 2.0;
   static constexpr double OBSTACLE_INFLATION = 1.6;
 
   //------------------------------------------
