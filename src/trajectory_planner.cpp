@@ -131,12 +131,12 @@ TrajectoryPlanner::plan_route_trajectory( const map::Route& latest_route, const 
   if( max_speed.has_value() )
   {
     max_allowed_speed = std::max( max_speed.value(), current_state.vx - 0.5 );
-    std::cerr << "max allowed speed: " << max_allowed_speed << " max speed value: " << max_speed.value() << std::endl;
   }
   else
   {
     max_allowed_speed = comfort_settings.max_speed;
   }
+  std::cerr << "objects received in planner: " << traffic_participants.participants.size() << std::endl;
   return plan_route_trajectory_with_custom_comfort_settings( latest_route, current_state, traffic_participants, comfort_settings,
                                                              traffic_signals );
 }
@@ -189,12 +189,14 @@ TrajectoryPlanner::plan_route_trajectory_impl( const map::Route& latest_route, c
 
   if( ref_traj.states.size() < 1 )
   {
+    std::cerr << "reached here danger" << std::endl;
     dynamics::VehicleStateDynamic empty_state;
     empty_state.x  = current_state.x;
     empty_state.y  = current_state.y;
     empty_state.vx = 0.0;
     ref_traj.states.assign( 3, empty_state );
   }
+
 
   // PID-based initial guess
   controllers::PurePursuit pid;
